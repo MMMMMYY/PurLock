@@ -10,8 +10,8 @@ This repository provides the artifacts for our USENIX Security 2026 submission, 
 
 Each folder includes:
 - `*_baseline.py` – Standard model implementation without protection.  
-- `*_gaussion.py` – Model with Gaussian mechanism applied.  
-- `*_laplace.py` – Model with Laplace mechanism applied.  
+- `*_gaussion.py` – Model with DP (Gaussian mechanism) applied.  
+- `*_laplace.py` – Model with DP (Laplace mechanism) applied.  
 - `*_purlocker.py` – Model with our proposed PurLocker method.
 
 
