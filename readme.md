@@ -12,6 +12,7 @@ Each folder includes:
 - `*_baseline.py` – Standard model implementation without protection.  
 - `*_DP.py` – Model with DP-SGD applied.   
 - `*_purlock.py` – Model with our proposed PurLock method.
+- `*_fhe.py` - Model with FHE applied. (Demo code for CNN only)
 
 For specificity, the demo code for localization task is in **`unauthorized_task/`**, which includes:
 - `*_baseline.py` – Standard model implementation without protection.
@@ -30,6 +31,12 @@ For specificity, the demo code for localization task is in **`unauthorized_task/
 - **Stock Price Prediction (RNN/LSTM models)**  
   - Apple Historical Stock Price (AAPL): Publicly available from financial data sources such as [Yahoo Finance](https://finance.yahoo.com/quote/AAPL/history/).  
 
-
+## Configuration:
+- Python 3.10.16  
+- PyTorch 2.2.2  
+- NumPy 1.26.4  
+- Opacus 1.5.3  
+- transformers 4.51.2  
+- concrete-ml-extensions 0.1.9
 
 Artifacts are shared **for availability only** at the review stage.   
