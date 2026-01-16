@@ -6,10 +6,11 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score, confusion_matrix
-import numpy as np
+from opacus import PrivacyEngine
+from opacus.validators import ModuleValidator
 from torchvision.datasets import SVHN
 import time
-from tqdm import tqdm
+from opacus.utils.batch_memory_manager import BatchMemoryManager
 
 
 class SimpleCNN(nn.Module):
@@ -28,11 +29,53 @@ class SimpleCNN(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
+class CNN5(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
 
-def add_laplace_noise(tensor, epsilon=1.0, sensitivity=1.0):
-    scale = sensitivity / epsilon
-    noise = torch.from_numpy(np.random.laplace(0.0, scale, tensor.size())).float().to(tensor.device)
-    return tensor + noise
+        # Block 1: 32x32
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.bn1   = nn.BatchNorm2d(64)
+
+        self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        self.bn2   = nn.BatchNorm2d(64)
+
+        # Block 2: 16x16
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.bn3   = nn.BatchNorm2d(128)
+
+        self.conv4 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.bn4   = nn.BatchNorm2d(128)
+
+        # Block 3: 8x8
+        self.conv5 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.bn5   = nn.BatchNorm2d(256)
+
+        self.pool = nn.MaxPool2d(2, 2)
+        self.dropout = nn.Dropout(0.5)
+
+        self.fc1 = nn.Linear(256 * 4 * 4, 256)
+        self.fc2 = nn.Linear(256, num_classes)
+
+    def forward(self, x):
+        # Block 1
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = self.pool(x)          # 32 → 16
+
+        # Block 2
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
+        x = self.pool(x)          # 16 → 8
+
+        # Block 3
+        x = F.relu(self.bn5(self.conv5(x)))
+        x = self.pool(x)          # 8 → 4
+
+        x = x.view(x.size(0), -1)
+        x = self.dropout(F.relu(self.fc1(x)))
+        return self.fc2(x)
+
 
 
 def get_dataloaders(dataset="cifar10", batch_size=128):
@@ -49,7 +92,6 @@ def get_dataloaders(dataset="cifar10", batch_size=128):
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False)
     return trainloader, testloader
-
 
 def evaluate(model, dataloader, device):
     model.eval()
@@ -98,13 +140,29 @@ def main():
     dataset = "svhn"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainloader, testloader = get_dataloaders(dataset=dataset)
-    model = SimpleCNN().to(device)
+
+    model = SimpleCNN()
+    model = ModuleValidator.fix(model)
+    ModuleValidator.validate(model, strict=False)
+
+    model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
-    epsilon = 1.0
-    sensitivity = 1.0
+    privacy_engine = PrivacyEngine(accountant="rdp")
+    model, optimizer, trainloader = privacy_engine.make_private_with_epsilon(
+        module=model,
+        optimizer=optimizer,
+        data_loader=trainloader,
+        target_epsilon=1,
+        target_delta=1e-5,
+        epochs=20,
+        max_grad_norm=1,
+    )
+
+    # print(f"DP training: ε={privacy_engine.get_epsilon(1e-5):.2f}, δ=1e-5")
     print(f"⏱️ Processing time: {time.time() - start_time:.2f}s")
+
     for epoch in range(1, 21):
         model.train()
         running_loss = 0.0
@@ -114,16 +172,12 @@ def main():
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
-
-            with torch.no_grad():
-                for param in model.parameters():
-                    if param.grad is not None:
-                        param.grad = add_laplace_noise(param.grad, epsilon=epsilon, sensitivity=sensitivity)
-
             optimizer.step()
             running_loss += loss.item() * inputs.size(0)
 
         train_loss = running_loss / len(trainloader.dataset)
+        # test_acc = evaluate(model, testloader, device)
+        epsilon = privacy_engine.get_epsilon(1e-5)
         acc, f1_val, auc, tpr, fpr = evaluate(model, testloader, device)
         results.append({
             "Epoch": epoch,
@@ -146,6 +200,5 @@ def main():
     print("tpr_list =", [round(r["TPR"], 4) for r in results])
     print("fpr_list =", [round(r["FPR"], 4) for r in results])
     print(f"time = {round(time.time() - start_time, 2)}  # seconds")
-
 if __name__ == "__main__":
     main()

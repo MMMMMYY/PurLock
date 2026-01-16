@@ -24,6 +24,74 @@ class LowRankLinear(nn.Module):
         return self.U(self.V(x))
 
 
+class CNN5_FeatureExtractor(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Block 1: 32x32 -> pool -> 16x16
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.bn1   = nn.BatchNorm2d(64)
+        self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        self.bn2   = nn.BatchNorm2d(64)
+
+        # Block 2: 16x16 -> pool -> 8x8
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.bn3   = nn.BatchNorm2d(128)
+        self.conv4 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.bn4   = nn.BatchNorm2d(128)
+
+        # Block 3 (deeper part; not returned by default)
+        self.conv5 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.bn5   = nn.BatchNorm2d(256)
+
+        self.pool = nn.MaxPool2d(2, 2)
+
+    def forward(self, x):
+        # Block 1
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        fe = self.pool(x)             # 32 -> 16, C=64
+
+        # Block 2
+        x = F.relu(self.bn3(self.conv3(fe)))
+        x = F.relu(self.bn4(self.conv4(x)))
+        fi = self.pool(x)             # 16 -> 8,  C=128
+
+        return fe, fi
+
+
+class CNN5_TaskModel(nn.Module):
+
+    def __init__(self, input_dim=256, num_classes=10, rank=16, dropout=0.5):
+        super().__init__()
+        self.gap = nn.AdaptiveAvgPool2d(1)  # (B,C,H,W)->(B,C,1,1)
+
+        # fe: C=64 -> input_dim
+        self.P_e = nn.Linear(64, input_dim)
+        # fi: C=128 -> input_dim
+        self.P_i = nn.Linear(128, input_dim)
+
+        self.L_e  = LowRankLinear(input_dim, input_dim, rank)
+        self.L_i1 = LowRankLinear(input_dim, 256, rank)
+        self.L_i2 = LowRankLinear(256, num_classes, rank)
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, fe, fi):
+        # GAP + flatten
+        fe = self.gap(fe).flatten(1)   # (B,64)
+        fi = self.gap(fi).flatten(1)   # (B,128)
+
+        # project to same dim
+        fe = self.P_e(fe)              # (B,input_dim)
+        fi = self.P_i(fi)              # (B,input_dim)
+
+        # keep your original fusion logic
+        fe = self.L_e(fe)
+        x = fe + fi
+        x = F.relu(self.L_i1(x))
+        x = self.dropout(x)
+        return self.L_i2(x)
+
 # ---------------------- TinyCNN ----------------------
 class TinyCNN_FeatureExtractor(nn.Module):
     def __init__(self):

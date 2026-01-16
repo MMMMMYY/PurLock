@@ -1,6 +1,6 @@
 # PurLock
 
-This repository provides the artifacts for our USENIX Security 2026 submission, in compliance with the Open Science Policy.  
+This repository provides the artifacts for our ACM CCS 2026 submission, in compliance with the Open Science Policy.  
 
 ## Contents
 
@@ -10,10 +10,12 @@ This repository provides the artifacts for our USENIX Security 2026 submission, 
 
 Each folder includes:
 - `*_baseline.py` – Standard model implementation without protection.  
-- `*_gaussion.py` – Model with DP (Gaussian mechanism) applied.  
-- `*_laplace.py` – Model with DP (Laplace mechanism) applied.  
-- `*_purlocker.py` – Model with our proposed PurLocker method.
+- `*_DP.py` – Model with DP-SGD applied.   
+- `*_purlock.py` – Model with our proposed PurLock method.
 
+For specificity, the demo code for localization task is in **`unauthorized_task/`**, which includes:
+- `*_baseline.py` – Standard model implementation without protection.
+- `*_DP_purlock.py` – Model with our proposed PurLock method and DP-SGD.
 
 ## Datasets 
 
